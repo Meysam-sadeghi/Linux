@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# پیکربندی
+THRESHOLD_CPU=80      # آستانه استفاده از CPU (درصد)
+THRESHOLD_DISK=90     # آستانه استفاده از دیسک (درصد)
+THRESHOLD_RAM=80      # آستانه استفاده از RAM (درصد)
+THRESHOLD_NET_RATE=10 # آستانه ترافیک شبکه (مگابیت بر ثانیه)
+EMAIL_TO="your_email@example.com"  # آدرس ایمیل گیرنده
+LOG_FILE="/var/log/server_monitor.log"  # فایل لاگ
+
+# تنظیمات ارسال ایمیل (یکی از دو روش زیر را انتخاب کنید)
+# روش 1: ارسال از طریق سرور محلی (ssmtp یا postfix)
+#SEND_METHOD="local"
+
+# روش 2: ارسال از طریق Gmail (msmtp)
+SEND_METHOD="gmail"
+GMAIL_USER="your_gmail_username@gmail.com"
+GMAIL_PASS="your_gmail_password"
+
+# تابع ارسال ایمیل
+send_email() {
+    local message="$1"
+    echo "$message" | if [[ "$SEND_METHOD" == "local" ]]; then
+        ssmtp "$EMAIL_TO"  # or use `sendmail` if you have it configured
+    else
+        msmtp -a default --from="$GMAIL_USER" --user="$GMAIL_USER" --passwordeval="echo $GMAIL_PASS" "$EMAIL_TO"
+    fi
+    echo "$(date) - $message" >> "$LOG_FILE"
+}
+
+# ... (بقیه توابع مانند قبل)
+
+# حلقه اصلی
+while true; do
+    # CPU
+    cpu_idle=$(mpstat 1 1 | awk '/Average:/ && $NF != "all" {print 100 - $12}')
+    check_and_send_email "CPU" "$cpu_idle" "$THRESHOLD_CPU"
+
+    # Disk
+    disk_usage=$(iostat -x 1 2 | awk '/sda/ && NR==4 {print $14}')  # Replace 'sda' with your disk
+    check_and_send_email "Disk" "$disk_usage" "$THRESHOLD_DISK"
+
+    # RAM
+    ram_usage=$(free -m | awk 'NR==2{printf "%.2f", $3/$2*100}')
+    check_and_send_email "RAM" "$ram_usage" "$THRESHOLD_RAM"
+
+    # Network
+    net_rate=$(nload | grep 'eth0' | awk '{print $2}')  # Replace 'eth0' with your network interface
+    check_and_send_email "Network rate" "$net_rate" "$THRESHOLD_NET_RATE"
+
+    sleep 60
+done
